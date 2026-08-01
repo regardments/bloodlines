@@ -71,7 +71,7 @@ return (function()
 		RiskColor = Color3.fromRGB(255, 50, 50),
 
 		Black = Color3.new(0, 0, 0),
-		Font = Font.fromEnum(Enum.Font.RobotoMono),
+		Font = Font.fromEnum(Enum.Font.Code),
 
 		OpenedFrames = {},
 		DependencyBoxes = {},
@@ -2942,7 +2942,7 @@ return (function()
 			end
 
 			local function RecalculateListSize(YSize)
-				ListOuter.Size = UDim2.fromOffset(DropdownOuter.AbsoluteSize.X, YSize or (MAX_DROPDOWN_ITEMS * 20 + 2))
+				ListOuter.Size = UDim2.fromOffset(DropdownOuter.AbsoluteSize.X, YSize or (MAX_DROPDOWN_ITEMS * 20 + 2 + (Dropdown.SearchVisible and 20 or 0)))
 			end
 
 			RecalculateListPosition()
@@ -2991,6 +2991,106 @@ return (function()
 				Parent = Scrolling,
 			})
 
+			local SearchRow = Library:Create("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 20),
+				ZIndex = 24,
+				Visible = false,
+				Name = "SearchRow",
+				Parent = ListInner,
+			})
+
+			local SearchOuter = Library:Create("Frame", {
+				BackgroundColor3 = Color3.new(0, 0, 0),
+				BorderColor3 = Color3.new(0, 0, 0),
+				Position = UDim2.new(0, 3, 0, 2),
+				Size = UDim2.new(1, -6, 0, 16),
+				ZIndex = 25,
+				Parent = SearchRow,
+			})
+
+			Library:AddToRegistry(SearchOuter, {
+				BorderColor3 = "Black",
+			})
+
+			local SearchInner = Library:Create("Frame", {
+				BackgroundColor3 = Library.MainColor,
+				BorderColor3 = Library.OutlineColor,
+				BorderMode = Enum.BorderMode.Inset,
+				Size = UDim2.new(1, 0, 1, 0),
+				ZIndex = 26,
+				Parent = SearchOuter,
+			})
+
+			Library:AddToRegistry(SearchInner, {
+				BackgroundColor3 = "MainColor",
+				BorderColor3 = "OutlineColor",
+			})
+
+			local DropdownSearchBox = Library:Create("TextBox", {
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 4, 0, 0),
+				Size = UDim2.new(1, -4, 1, 0),
+				FontFace = Library.Font,
+				PlaceholderColor3 = Color3.fromRGB(190, 190, 190),
+				PlaceholderText = "Search...",
+				Text = "",
+				TextColor3 = Library.FontColor,
+				TextSize = 12,
+				TextStrokeTransparency = 0,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ClearTextOnFocus = false,
+				ZIndex = 27,
+				Parent = SearchInner,
+			})
+
+			Library:AddToRegistry(DropdownSearchBox, {
+				TextColor3 = "FontColor",
+			})
+
+			Library:ApplyTextStroke(DropdownSearchBox)
+			Library:OnHighlight(SearchOuter, SearchOuter, { BorderColor3 = "AccentColor" }, { BorderColor3 = "Black" })
+
+			Dropdown.Filter = ""
+			Dropdown.SearchVisible = false
+			Dropdown.VisibleButtons = {}
+
+			local function UpdateSearchVisibility()
+				local ShowSearch = #Dropdown.Values > MAX_DROPDOWN_ITEMS
+
+				if Dropdown.SearchVisible ~= ShowSearch then
+					Dropdown.SearchVisible = ShowSearch
+					SearchRow.Visible = ShowSearch
+
+					if ShowSearch then
+						Scrolling.Position = UDim2.new(0, 0, 0, 20)
+						Scrolling.Size = UDim2.new(1, 0, 1, -20)
+					else
+						Scrolling.Position = UDim2.new(0, 0, 0, 0)
+						Scrolling.Size = UDim2.new(1, 0, 1, 0)
+					end
+				end
+			end
+
+			DropdownSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+				Dropdown.Filter = DropdownSearchBox.Text
+				Dropdown:BuildDropdownList()
+			end)
+
+			DropdownSearchBox.FocusLost:Connect(function(EnterPressed)
+				if EnterPressed then
+					local First = Dropdown.VisibleButtons[1]
+
+					if First then
+						First:Select()
+
+						if not Info.Multi then
+							Dropdown:CloseDropdown()
+						end
+					end
+				end
+			end)
+
 			function Dropdown:Display()
 				local Values = Dropdown.Values
 				local Str = ""
@@ -3035,9 +3135,15 @@ return (function()
 				end
 
 				local Count = 0
+				local Filter = (Dropdown.Filter or ""):lower()
+				Dropdown.VisibleButtons = {}
 
 				for Idx, Value in next, Values do
 					local Table = {}
+
+					if Filter ~= "" and not tostring(Value):lower():find(Filter, 1, true) then
+						continue
+					end
 
 					Count = Count + 1
 
@@ -3094,52 +3200,48 @@ return (function()
 							or "FontColor"
 					end
 
+					function Table:Select()
+						local Try = not Selected
+
+						if Dropdown:GetActiveValues() == 1 and not Try and not Info.AllowNull then
+							return
+						end
+
+						if Info.Multi then
+							Selected = Try
+
+							if Selected then
+								Dropdown.Value[Value] = true
+							else
+								Dropdown.Value[Value] = nil
+							end
+						else
+							Selected = Try
+
+							if Selected then
+								Dropdown.Value = Value
+							else
+								Dropdown.Value = nil
+							end
+
+							for _, OtherButton in next, Buttons do
+								OtherButton:UpdateButton()
+							end
+
+							Library:UpdateDependencyBoxes()
+						end
+
+						Table:UpdateButton()
+						Dropdown:Display()
+
+						Library:SafeCallback("Dropdown_Callback" .. "_" .. (Idx or ""), Dropdown.Callback, Dropdown.Value)
+						Library:SafeCallback("Dropdown_Changed" .. "_" .. (Idx or ""), Dropdown.Changed, Dropdown.Value)
+						Library:AttemptSave()
+					end
+
 					ButtonLabel.InputBegan:Connect(function(Input)
 						if Input.UserInputType == Enum.UserInputType.MouseButton1 then
-							local Try = not Selected
-
-							if Dropdown:GetActiveValues() == 1 and not Try and not Info.AllowNull then
-							else
-								if Info.Multi then
-									Selected = Try
-
-									if Selected then
-										Dropdown.Value[Value] = true
-									else
-										Dropdown.Value[Value] = nil
-									end
-								else
-									Selected = Try
-
-									if Selected then
-										Dropdown.Value = Value
-									else
-										Dropdown.Value = nil
-									end
-
-									for _, OtherButton in next, Buttons do
-										OtherButton:UpdateButton()
-									end
-
-									Library:UpdateDependencyBoxes()
-								end
-
-								Table:UpdateButton()
-								Dropdown:Display()
-
-								Library:SafeCallback(
-									"Dropdown_Callback" .. "_" .. (Idx or ""),
-									Dropdown.Callback,
-									Dropdown.Value
-								)
-								Library:SafeCallback(
-									"Dropdown_Changed" .. "_" .. (Idx or ""),
-									Dropdown.Changed,
-									Dropdown.Value
-								)
-
-								Library:AttemptSave()
-							end
+							Table:Select()
 						end
 					end)
 
@@ -3147,7 +3249,10 @@ return (function()
 					Dropdown:Display()
 
 					Buttons[Button] = Table
+					table.insert(Dropdown.VisibleButtons, Table)
 				end
+
+				UpdateSearchVisibility()
 
 				Scrolling.CanvasSize = UDim2.fromOffset(0, (Count * 20) + 1)
 
@@ -3164,6 +3269,11 @@ return (function()
 			end
 
 			function Dropdown:OpenDropdown()
+				if Dropdown.Filter ~= "" then
+					Dropdown.Filter = ""
+					DropdownSearchBox.Text = ""
+				end
+
 				ListOuter.Position = UDim2.fromOffset(
 					DropdownOuter.AbsolutePosition.X,
 					DropdownOuter.AbsolutePosition.Y + DropdownOuter.Size.Y.Offset + 1
@@ -4380,13 +4490,8 @@ return (function()
 
 			CanvasSize = UDim2.new(0, 0, 0, 21),
 			ScrollingDirection = Enum.ScrollingDirection.X,
-			ScrollBarThickness = 3,
-			ScrollBarImageColor3 = Library.AccentColor,
+			ScrollBarThickness = 0,
 			ClipsDescendants = true,
-		})
-
-		Library:AddToRegistry(TabArea, {
-			ScrollBarImageColor3 = "AccentColor",
 		})
 
 		local TabListLayout = Library:Create("UIListLayout", {
