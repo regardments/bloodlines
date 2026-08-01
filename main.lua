@@ -1690,7 +1690,7 @@ do
 end
 
 local Window = Library:CreateWindow({
-	Title = "Aztup Hub | Lycoris",
+	Title = "Regardments | Bloodlines",
 	Center = true,
 	AutoShow = true,
 	TabPadding = 8,
