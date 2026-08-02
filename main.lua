@@ -1162,29 +1162,35 @@ do
 end
 
 do
-	localPlayer.CharacterAdded:Connect(function()
+	local connected = false
+
+	local function setupLeaderboard()
+		if connected then
+			return
+		end
+
 		task.spawn(function()
-			local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+			local playerGui = localPlayer:WaitForChild("PlayerGui", 15)
 			if not playerGui then
 				return
 			end
 
-			local clientGui = playerGui:FindFirstChild("ClientGui")
+			local clientGui = playerGui:WaitForChild("ClientGui", 15)
 			if not clientGui then
 				return
 			end
 
-			local mainframe = clientGui:FindFirstChild("Mainframe")
+			local mainframe = clientGui:WaitForChild("Mainframe", 15)
 			if not mainframe then
 				return
 			end
 
-			local playerList = mainframe:FindFirstChild("PlayerList")
+			local playerList = mainframe:WaitForChild("PlayerList", 15)
 			if not playerList then
 				return
 			end
 
-			local list = playerList:FindFirstChild("List")
+			local list = playerList:WaitForChild("List", 15)
 			if not list then
 				return
 			end
@@ -1192,13 +1198,7 @@ do
 			local lastSpectating
 			local lastSpectatingObject
 
-			local function spectate(player, obj)
-				local playerData = getPlayerData(player)
-				if not playerData then
-					return
-				end
-
-				if not player or lastSpectating == player then
+				local function stopSpectate()
 					if lastSpectatingObject then
 						lastSpectatingObject.PlayerName.TextColor3 = Color3.fromRGB(255, 255, 255)
 						lastSpectatingObject = nil
@@ -1210,73 +1210,101 @@ do
 					if humanoid then
 						workspace.CurrentCamera.CameraSubject = humanoid
 					end
+				end
 
+				local function spectate(player, obj)
+					local playerData = getPlayerData(player)
+					if not playerData then
+						return stopSpectate()
+					end
+
+					if not player or lastSpectating == player then
+						return stopSpectate()
+					end
+
+					if lastSpectatingObject then
+						lastSpectatingObject.PlayerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					end
+
+					lastSpectatingObject = obj
+					lastSpectating = player
+
+					if player ~= localPlayer then
+						obj.PlayerName.TextColor3 = Color3.fromRGB(255, 0, 0)
+					end
+
+					local cam = workspace.CurrentCamera
+					cam.CameraSubject = playerData.humanoid
+					cam.CameraType = Enum.CameraType.Custom
+				end
+
+			local function normalizeName(text)
+				text = (text or ""):gsub("%s+", "")
+				text = text:gsub("^[^%w]+", "")
+				return text:lower()
+			end
+
+			local function getPlayerFromRow(obj)
+				local label = obj:FindFirstChild("PlayerName")
+				if not label or not label:IsA("TextLabel") then
 					return
 				end
 
-				if lastSpectatingObject then
-					lastSpectatingObject.PlayerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+				local wanted = normalizeName(label.Text)
+				if wanted == "" then
+					return
 				end
 
-				lastSpectatingObject = obj
-				lastSpectating = player
-
-				if player ~= localPlayer then
-					obj.PlayerName.TextColor3 = Color3.fromRGB(255, 0, 0)
+				for _, p in ipairs(Players:GetPlayers()) do
+					local char = p.Character
+					if char then
+						local humanoid = char:FindFirstChildOfClass("Humanoid")
+						if humanoid and normalizeName(humanoid.DisplayName) == wanted then
+							return p
+						end
+					end
 				end
-
-				workspace.CurrentCamera.CameraSubject = playerData.humanoid
 			end
 
-			local function onListChildAdded(obj)
-				task.spawn(function()
-					local playerName = obj:WaitForChild("RealName", 10)
-					if not playerName then
+				local function onListChildAdded(obj)
+					if not obj:IsA("ImageButton") then
 						return
 					end
 
-					obj.InputBegan:Connect(function(inputObject)
-						if inputObject.UserInputType == Enum.UserInputType.MouseButton2 then
-							local humanoid = localPlayerData.humanoid
-							if not humanoid then
-								return spectate()
-							end
+					task.spawn(function()
+						local playerName = obj:WaitForChild("PlayerName", 10)
+						if not playerName or not playerName:IsA("TextLabel") then
+							return
+						end
 
-							local player = Players:FindFirstChild(playerName.Value)
-							if not player then
-								return spectate()
-							end
-
-							spectate(player, obj)
-						elseif inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+						obj.MouseButton1Click:Connect(function()
 							local chakraToggle = Toggles["Chakra Sense Spoof"]
 							if not chakraToggle or not chakraToggle.Value then
 								return
 							end
 
-							local humanoid = localPlayerData.humanoid
-							if not humanoid then
-								return spectate()
-							end
-
-							local player = Players:FindFirstChild(playerName.Value)
+							local player = getPlayerFromRow(obj)
 							if not player or player == localPlayer then
 								return
 							end
 
 							spectate(player, obj)
-						end
+						end)
 					end)
-				end)
-			end
+				end
 
 			for _, v in ipairs(list:GetChildren()) do
 				task.spawn(onListChildAdded, v)
 			end
 
 			list.ChildAdded:Connect(onListChildAdded)
+
+			connected = true
 		end)
-	end)
+	end
+
+	setupLeaderboard()
+	localPlayer.CharacterAdded:Connect(setupLeaderboard)
 end
 
 do
@@ -1590,6 +1618,58 @@ do
 			if humanoid then
 				humanoid.WalkSpeed = flag("Walk Speed Value")
 			end
+		end)
+	end
+
+	local agilityConn
+	local agilityBase
+
+	local function getAgilityValue()
+		local live = workspace:FindFirstChild("Live")
+		if not live then
+			return
+		end
+
+		local liveChar = live:FindFirstChild(localPlayer.Name)
+		if not liveChar then
+			return
+		end
+
+		return liveChar:FindFirstChild("PassiveAgility")
+	end
+
+	function funcs.agilitySpoof(state)
+		if not state then
+			if agilityConn then
+				agilityConn:Disconnect()
+				agilityConn = nil
+			end
+
+			local pa = getAgilityValue()
+			if pa and agilityBase then
+				pa.Value = agilityBase
+			end
+
+			agilityBase = nil
+			return
+		end
+
+		if agilityConn then
+			return
+		end
+
+		agilityConn = RunService.Heartbeat:Connect(function()
+			local pa = getAgilityValue()
+			if not pa then
+				return
+			end
+
+			if not agilityBase then
+				agilityBase = pa.Value
+			end
+
+			local percent = flag("Agility Spoofer Percent") or 15
+			pa.Value = agilityBase * (1 + percent / 100)
 		end)
 	end
 
@@ -1917,6 +1997,17 @@ flySpeedDepbox:AddSlider("Fly Speed", {
 })
 flySpeedDepbox:SetupDependencies({ { Toggles["Fly"], true } })
 
+movement:AddToggle("Agility Spoofer", { Text = "Agility Spoofer", Callback = funcs.agilitySpoof })
+local agilityDepbox = movement:AddDependencyBox()
+agilityDepbox:AddSlider("Agility Spoofer Percent", {
+	Text = "Agility Spoofer Percent",
+	Min = 5,
+	Max = 500,
+	Default = 15,
+	Rounding = 0,
+})
+agilityDepbox:SetupDependencies({ { Toggles["Agility Spoofer"], true } })
+
 local noClipToggle = movement:AddToggle("No Clip", { Text = "No Clip", Callback = funcs.noClip })
 noClipToggle:AddKeyPicker("NoClip Key", {
 	Text = "NoClip Keybind",
@@ -2190,6 +2281,7 @@ Library:OnUnload(function()
 	funcs.chatLogger(false)
 	funcs.chakraSpoof(false)
 	funcs.chakraSenseDetect(false)
+	funcs.agilitySpoof(false)
 
 	if attachConn then
 		attachConn:Disconnect()
