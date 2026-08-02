@@ -301,7 +301,7 @@ local function createBaseESP(category, options)
 		label.Text = name
 		label.TextColor3 = Color3.new(1, 1, 1)
 		label.TextScaled = true
-		label.TextSize = 14
+		label.TextSize = 15
 		label.TextStrokeColor3 = Color3.new(0, 0, 0)
 		label.TextStrokeTransparency = 0.2
 		label.Parent = billboard
@@ -332,6 +332,8 @@ local function createBaseESP(category, options)
 			local root = obj.gui.Adornee
 			local myRootPart = localPlayerData.rootPart
 			local distance = myRootPart and root and (myRootPart.Position - root.Position).Magnitude or 0
+
+			obj.label.TextSize = math.floor(15 - 6 * math.clamp((distance - 10) / 300, 0, 1))
 
 			local maxDistance = flag(categoryName .. " Max Distance") or 100000
 			if distance > maxDistance then
@@ -1698,11 +1700,9 @@ local Window = Library:CreateWindow({
 
 local Main = Window:AddTab("Main")
 local Combat = Window:AddTab("Combat")
-local Teleports = Window:AddTab("Teleports")
 local ESPTab = Window:AddTab("ESP")
 local QoL = Window:AddTab("Quality Of Life")
 local Visuals = Window:AddTab("Visuals")
-local Risky = Window:AddTab("Risky")
 local UISettings = Window:AddTab("UI Settings")
 
 -- ── MAIN ──────────────────────────────────────────────
@@ -1773,38 +1773,6 @@ local chakraSense = Combat:AddLeftGroupbox("Chakra Sense")
 chakraSense:AddToggle("Chakra Sense Spoof", { Text = "Chakra Sense", Callback = funcs.chakraSpoof })
 chakraSense:AddToggle("Sense Detector", { Text = "Sense Detector", Callback = funcs.chakraSenseDetect })
 
--- ── TELEPORTS ─────────────────────────────────────────
-local chakraTeleports = Teleports:AddLeftGroupbox("Chakra Points")
-local npcTeleports = Teleports:AddLeftGroupbox("NPCs")
-local playerTeleports = Teleports:AddRightGroupbox("Players")
-local serverTeleports = Teleports:AddRightGroupbox("Server")
-
-local chakraDropdown = chakraTeleports:AddDropdown("Chakra Point", {
-	Text = "Chakra Point",
-	Values = chakraPoints,
-	AllowNull = true,
-})
-chakraTeleports:AddButton({ Text = "Teleport To", Func = funcs.teleportToChakraPoint })
-
-npcDropdown = npcTeleports:AddDropdown("NPC Teleport", {
-	Text = "NPCs",
-	Values = npcs,
-	AllowNull = true,
-})
-npcTeleports:AddButton({ Text = "Teleport To", Func = funcs.teleportToNPC })
-
-playerTeleports:AddDropdown("Player Teleport", {
-	Text = "Players",
-	SpecialType = "Player",
-	AllowNull = true,
-})
-playerTeleports:AddButton({ Text = "Teleport To", Func = funcs.teleportToPlayer })
-
-serverTeleports:AddToggle("Thunderstorm Server Finder", {
-	Text = "Thunderstorm Server Finder",
-	Callback = funcs.findThunderstormServer,
-})
-
 -- ── ESP ───────────────────────────────────────────────
 local playersSection = ESPTab:AddLeftGroupbox("Players")
 local mobsSection = ESPTab:AddLeftGroupbox("Mobs")
@@ -1831,7 +1799,9 @@ makeFor(areasSection, "Areas", areasESP)
 
 -- ── QUALITY OF LIFE ───────────────────────────────────
 local characterQoL = QoL:AddLeftGroupbox("Character")
+local teleportQoL = QoL:AddLeftGroupbox("Teleports")
 local accountQoL = QoL:AddRightGroupbox("Account")
+local dataQoL = QoL:AddRightGroupbox("Data")
 
 characterQoL:AddButton({ Text = "Open Wipe Shop", Func = funcs.openWipeShop })
 characterQoL:AddButton({ Text = "Unlock Burrow", Func = funcs.unlockBurrow })
@@ -1842,6 +1812,39 @@ accountQoL:AddDropdown("Reincarnation Gender", {
 	Default = 1,
 })
 accountQoL:AddButton({ Text = "Wipe", Func = funcs.wipe })
+
+local chakraDropdown = teleportQoL:AddDropdown("Chakra Point", {
+	Text = "Chakra Point",
+	Values = chakraPoints,
+	AllowNull = true,
+})
+teleportQoL:AddButton({ Text = "Teleport To", Func = funcs.teleportToChakraPoint })
+
+npcDropdown = teleportQoL:AddDropdown("NPC Teleport", {
+	Text = "NPCs",
+	Values = npcs,
+	AllowNull = true,
+})
+teleportQoL:AddButton({ Text = "Teleport To", Func = funcs.teleportToNPC })
+
+teleportQoL:AddDropdown("Player Teleport", {
+	Text = "Players",
+	SpecialType = "Player",
+	AllowNull = true,
+})
+teleportQoL:AddButton({ Text = "Teleport To", Func = funcs.teleportToPlayer })
+
+teleportQoL:AddToggle("Thunderstorm Server Finder", {
+	Text = "Thunderstorm Server Finder",
+	Callback = funcs.findThunderstormServer,
+})
+
+dataQoL:AddButton({ Text = "Purchase Item", Func = funcs.giveItem })
+dataQoL:AddDropdown("Item Name", {
+	Text = "Item Name",
+	Values = purchasableItems,
+	AllowNull = true,
+})
 
 -- ── VISUALS ───────────────────────────────────────────
 local lighting = Visuals:AddLeftGroupbox("Lighting")
@@ -1865,16 +1868,6 @@ lighting:AddDropdown("Time Of Day", {
 })
 
 lighting:AddToggle("Time Changer", { Text = "Time Changer", Callback = funcs.timeChanger })
-
--- ── RISKY ─────────────────────────────────────────────
-local riskyCheats = Risky:AddLeftGroupbox("Data")
-
-riskyCheats:AddButton({ Text = "Purchase Item", Func = funcs.giveItem })
-riskyCheats:AddDropdown("Item Name", {
-	Text = "Item Name",
-	Values = purchasableItems,
-	AllowNull = true,
-})
 
 -- ── UI SETTINGS ───────────────────────────────────────
 local menuGroup = UISettings:AddLeftGroupbox("Menu")
