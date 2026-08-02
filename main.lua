@@ -1126,6 +1126,23 @@ do
 							end
 
 							spectate(player, obj)
+						elseif inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+							local chakraToggle = Toggles["Chakra Sense Spoof"]
+							if not chakraToggle or not chakraToggle.Value then
+								return
+							end
+
+							local humanoid = localPlayerData.humanoid
+							if not humanoid then
+								return spectate()
+							end
+
+							local player = Players:FindFirstChild(playerName.Value)
+							if not player or player == localPlayer then
+								return
+							end
+
+							spectate(player, obj)
 						end
 					end)
 				end)
@@ -1633,6 +1650,47 @@ do
 end
 
 do
+	function funcs.refreshInfo()
+		if not dataFunction then
+			return Library:Notify("DataFunction not found", 3)
+		end
+
+		local ok, data = pcall(function()
+			return dataFunction:InvokeServer("GetData")
+		end)
+
+		if not ok or type(data) ~= "table" then
+			return Library:Notify("Failed to fetch data", 3)
+		end
+
+		local function value(v)
+			if type(v) == "table" then
+				return tostring(#v)
+			elseif v == nil then
+				return "--"
+			end
+			return tostring(v)
+		end
+
+		for key, entry in next, infoLabels do
+			if entry and entry.label and entry.label.SetText then
+				local val
+
+				if key == "Died" then
+					val = data[key] and "No" or "Yes"
+				else
+					val = value(data[key])
+				end
+
+				entry.label:SetText(entry.title .. ": " .. val)
+			end
+		end
+
+		Library:Notify("Information refreshed!", 2)
+	end
+end
+
+do
 	function funcs.openWipeShop()
 		local playerGui = localPlayer:FindFirstChild("PlayerGui")
 		local clientGui = playerGui and playerGui:FindFirstChild("ClientGui")
@@ -1699,10 +1757,10 @@ local Window = Library:CreateWindow({
 })
 
 local Main = Window:AddTab("Main")
-local Combat = Window:AddTab("Combat")
 local ESPTab = Window:AddTab("ESP")
 local QoL = Window:AddTab("Quality Of Life")
 local Visuals = Window:AddTab("Visuals")
+local InfoTab = Window:AddTab("Information")
 local UISettings = Window:AddTab("UI Settings")
 
 -- ── MAIN ──────────────────────────────────────────────
@@ -1767,8 +1825,8 @@ localCheats:AddLabel("Attach To Back"):AddKeyPicker("Attach To Back", {
 	NoUI = true,
 })
 
--- ── COMBAT ────────────────────────────────────────────
-local chakraSense = Combat:AddLeftGroupbox("Chakra Sense")
+-- ── CHAKRA SENSE (MAIN) ───────────────────────────────
+local chakraSense = Main:AddRightGroupbox("Chakra Sense")
 
 chakraSense:AddToggle("Chakra Sense Spoof", { Text = "Chakra Sense", Callback = funcs.chakraSpoof })
 chakraSense:AddToggle("Sense Detector", { Text = "Sense Detector", Callback = funcs.chakraSenseDetect })
@@ -1868,6 +1926,56 @@ lighting:AddDropdown("Time Of Day", {
 })
 
 lighting:AddToggle("Time Changer", { Text = "Time Changer", Callback = funcs.timeChanger })
+
+-- ── INFORMATION ───────────────────────────────────────
+local characterInfo = InfoTab:AddLeftGroupbox("Character")
+local statsInfo = InfoTab:AddRightGroupbox("Stats")
+local skillsInfo = InfoTab:AddRightGroupbox("Skills")
+
+characterInfo:AddButton({ Text = "Refresh", Func = funcs.refreshInfo })
+
+local infoLabels = {}
+
+local function addInfoLabel(box, key, title)
+	local label = box:AddLabel(title .. ": --")
+	infoLabels[key] = { title = title, label = label }
+	return label
+end
+
+addInfoLabel(characterInfo, "Name", "Name")
+addInfoLabel(characterInfo, "Bloodline", "Bloodline")
+addInfoLabel(characterInfo, "Clan", "Clan")
+addInfoLabel(characterInfo, "Village", "Village")
+addInfoLabel(characterInfo, "Age", "Age")
+addInfoLabel(characterInfo, "PB", "Prestige")
+addInfoLabel(characterInfo, "AwakeningLevel", "Awakening Level")
+addInfoLabel(characterInfo, "MasteryAmount1", "Mastery")
+addInfoLabel(characterInfo, "Location", "Location")
+addInfoLabel(characterInfo, "CurrentArea", "Area")
+addInfoLabel(characterInfo, "CurrentWeapon", "Weapon")
+addInfoLabel(characterInfo, "Title", "Title")
+
+addInfoLabel(statsInfo, "Ryo", "Ryo")
+addInfoLabel(statsInfo, "Chakra", "Chakra")
+addInfoLabel(statsInfo, "ChakraPoints", "Chakra Points")
+addInfoLabel(statsInfo, "Acumen", "Acumen")
+addInfoLabel(statsInfo, "LifeForce", "Life Force")
+addInfoLabel(statsInfo, "CP", "CP")
+addInfoLabel(statsInfo, "Knocks", "Knocks")
+addInfoLabel(statsInfo, "M1s", "M1s")
+addInfoLabel(statsInfo, "WarPoints", "War Points")
+addInfoLabel(statsInfo, "Died", "Alive")
+
+addInfoLabel(skillsInfo, "MasteredJutsus", "Mastered Jutsus")
+addInfoLabel(skillsInfo, "UnlockedSkills", "Unlocked Skills")
+addInfoLabel(skillsInfo, "Missions", "Missions")
+addInfoLabel(skillsInfo, "Exams", "Exams")
+addInfoLabel(skillsInfo, "FireXP", "Fire XP")
+addInfoLabel(skillsInfo, "EarthXP", "Earth XP")
+addInfoLabel(skillsInfo, "WaterXP", "Water XP")
+addInfoLabel(skillsInfo, "WindXP", "Wind XP")
+addInfoLabel(skillsInfo, "LightningXP", "Lightning XP")
+addInfoLabel(skillsInfo, "WoodXP", "Wood XP")
 
 -- ── UI SETTINGS ───────────────────────────────────────
 local menuGroup = UISettings:AddLeftGroupbox("Menu")
