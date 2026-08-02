@@ -2817,8 +2817,11 @@ return (function()
 				Info.Compact = true
 			end
 
+			local Values = table.clone(Info.Values)
+			table.sort(Values)
+
 			local Dropdown = {
-				Values = Info.Values,
+				Values = Values,
 				Value = Info.Multi and {},
 				SaveValues = Info.SaveValues or false,
 				Multi = Info.Multi,
@@ -3262,7 +3265,8 @@ return (function()
 
 			function Dropdown:SetValues(NewValues)
 				if NewValues then
-					Dropdown.Values = NewValues
+					Dropdown.Values = table.clone(NewValues)
+					table.sort(Dropdown.Values)
 				end
 
 				Dropdown:BuildDropdownList()
