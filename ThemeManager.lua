@@ -4,53 +4,54 @@ return (function()
 	do
 		ThemeManager.Folder = "Lycoris-Rewrite-Themes"
 		ThemeManager.Library = nil
+		ThemeManager.DefaultTheme = "Crimson"
 		ThemeManager.BuiltInThemes = {
-			["Default"] = {
+			["Crimson"] = {
 				1,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"1c1c1c","AccentColor":"0055ff","BackgroundColor":"141414","OutlineColor":"323232"}'
+					'{"FontColor":"ffffff","MainColor":"1a1a1a","AccentColor":"dc143c","BackgroundColor":"141414","OutlineColor":"333333"}'
 				),
 			},
-			["BBot"] = {
+			["Blood"] = {
 				2,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"1e1e1e","AccentColor":"7e48a3","BackgroundColor":"232323","OutlineColor":"141414"}'
+					'{"FontColor":"ffffff","MainColor":"191010","AccentColor":"ff2020","BackgroundColor":"120d0d","OutlineColor":"332020"}'
 				),
 			},
-			["Fatality"] = {
+			["Royal Purple"] = {
 				3,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"1e1842","AccentColor":"c50754","BackgroundColor":"191335","OutlineColor":"3c355d"}'
+					'{"FontColor":"ffffff","MainColor":"181828","AccentColor":"a855f7","BackgroundColor":"12121f","OutlineColor":"2e2e42"}'
 				),
 			},
-			["Jester"] = {
+			["Ocean"] = {
 				4,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"242424","AccentColor":"db4467","BackgroundColor":"1c1c1c","OutlineColor":"373737"}'
+					'{"FontColor":"ffffff","MainColor":"0f1a2b","AccentColor":"22d3ee","BackgroundColor":"0b111a","OutlineColor":"1f3a5f"}'
 				),
 			},
-			["Mint"] = {
+			["Emerald"] = {
 				5,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"242424","AccentColor":"3db488","BackgroundColor":"1c1c1c","OutlineColor":"373737"}'
+					'{"FontColor":"ffffff","MainColor":"0e1f16","AccentColor":"10b981","BackgroundColor":"0a1510","OutlineColor":"1f3a2b"}'
 				),
 			},
-			["Tokyo Night"] = {
+			["Amber"] = {
 				6,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"191925","AccentColor":"6759b3","BackgroundColor":"16161f","OutlineColor":"323232"}'
+					'{"FontColor":"ffffff","MainColor":"1f1710","AccentColor":"f59e0b","BackgroundColor":"17120c","OutlineColor":"3a2c1a"}'
 				),
 			},
-			["Ubuntu"] = {
+			["Neon Pink"] = {
 				7,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"3e3e3e","AccentColor":"e2581e","BackgroundColor":"323232","OutlineColor":"191919"}'
+					'{"FontColor":"ffffff","MainColor":"200f1c","AccentColor":"ec4899","BackgroundColor":"170a14","OutlineColor":"3a1f30"}'
 				),
 			},
-			["Quartz"] = {
+			["Graphite"] = {
 				8,
 				httpService:JSONDecode(
-					'{"FontColor":"ffffff","MainColor":"232330","AccentColor":"426e87","BackgroundColor":"1d1b26","OutlineColor":"27232f"}'
+					'{"FontColor":"ffffff","MainColor":"232323","AccentColor":"94a3b8","BackgroundColor":"1c1c1c","OutlineColor":"373737"}'
 				),
 			},
 		}
