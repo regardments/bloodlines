@@ -72,6 +72,7 @@ return (function()
 
 		Black = Color3.new(0, 0, 0),
 		Font = Font.fromEnum(Enum.Font.Code),
+		FontEnum = Enum.Font.Code,
 
 		OpenedFrames = {},
 		DependencyBoxes = {},
@@ -685,7 +686,10 @@ return (function()
 	end
 
 	function Library:GetTextBounds(Text, Font, Size, Resolution)
-		local Bounds = TextService:GetTextSize(Text, Size, "RobotoMono", Resolution or Vector2.new(1920, 1080))
+		if typeof(Font) == "Font" then
+			Font = Library.FontEnum
+		end
+		local Bounds = TextService:GetTextSize(Text, Size, Font or Enum.Font.Code, Resolution or Vector2.new(1920, 1080))
 		return Bounds.X, Bounds.Y
 	end
 
@@ -2359,10 +2363,14 @@ return (function()
 					if cursor ~= -1 then
 						-- calculate pixel width of text from start to cursor
 						local subtext = string.sub(Box.Text, 1, cursor - 1)
+						local boxFont = Box.Font
+						if typeof(boxFont) == "Font" then
+							boxFont = Library.FontEnum
+						end
 						local width = TextService:GetTextSize(
 							subtext,
 							Box.TextSize,
-							Box.Font,
+							boxFont,
 							Vector2.new(math.huge, math.huge)
 						).X
 
@@ -3907,7 +3915,13 @@ return (function()
 		NotifScale = NotifScale / 100
 
 		local ScaledTextSize = 14 * NotifScale
+		local MaxWidth = 300
 		local XSize, YSize = Library:GetTextBounds(Text, Library.Font, ScaledTextSize)
+
+		if XSize > MaxWidth then
+			XSize = MaxWidth
+			YSize = select(2, Library:GetTextBounds(Text, Library.Font, ScaledTextSize, Vector2.new(MaxWidth - 8, math.huge)))
+		end
 
 		YSize = YSize + (7 * NotifScale)
 
@@ -3965,6 +3979,7 @@ return (function()
 			Position = UDim2.new(0, 4, 0, 0),
 			Size = UDim2.new(1, -4, 1, 0),
 			Text = Text,
+			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextSize = ScaledTextSize,
 			ZIndex = 103,
@@ -4026,7 +4041,13 @@ return (function()
 		NotifScale = NotifScale / 100
 
 		local ScaledTextSize = 14 * NotifScale
+		local MaxWidth = 300
 		local XSize, YSize = Library:GetTextBounds(Text, Library.Font, ScaledTextSize)
+
+		if XSize > MaxWidth then
+			XSize = MaxWidth
+			YSize = select(2, Library:GetTextBounds(Text, Library.Font, ScaledTextSize, Vector2.new(MaxWidth - 8, math.huge)))
+		end
 
 		YSize = YSize + (7 * NotifScale)
 
@@ -4084,6 +4105,7 @@ return (function()
 			Position = UDim2.new(0, 4, 0, 0),
 			Size = UDim2.new(1, -4, 1, 0),
 			Text = Text,
+			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextSize = ScaledTextSize,
 			ZIndex = 103,
