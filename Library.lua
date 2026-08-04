@@ -1673,7 +1673,10 @@ return (function()
 				ContainerLabel.Visible = true
 				ContainerLabel.TextColor3 = State and Library.AccentColor or Library.FontColor
 
-				Library.RegistryMap[ContainerLabel].Properties.TextColor3 = State and "AccentColor" or "FontColor"
+				local ContainerReg = Library.RegistryMap[ContainerLabel]
+				if ContainerReg then
+					ContainerReg.Properties.TextColor3 = State and "AccentColor" or "FontColor"
+				end
 
 				local YSize = 0
 				local XSize = 0
