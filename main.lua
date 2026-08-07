@@ -1257,47 +1257,85 @@ do
 
 				for _, p in ipairs(Players:GetPlayers()) do
 					local char = p.Character
-					if char then
-						local humanoid = char:FindFirstChildOfClass("Humanoid")
-						if humanoid and normalizeName(humanoid.DisplayName) == wanted then
+					local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+					local candidates = { p.Name, p.DisplayName, humanoid and humanoid.DisplayName }
+					for _, candidate in ipairs(candidates) do
+						if candidate and normalizeName(candidate) == wanted then
 							return p
 						end
 					end
 				end
 			end
 
-				local function onListChildAdded(obj)
-					if not obj:IsA("ImageButton") then
-						return
-					end
+				local function resolveRow(obj)
+					local node = obj
+					while node do
+						if node:IsA("GuiObject") then
+							local playerName = node:FindFirstChild("PlayerName")
+							if playerName and playerName:IsA("TextLabel") then
+								return node
+							end
+						end
 
-					task.spawn(function()
-						local playerName = obj:WaitForChild("PlayerName", 10)
-						if not playerName or not playerName:IsA("TextLabel") then
+						if node == list then
 							return
 						end
 
-						obj.MouseButton1Click:Connect(function()
-							local chakraToggle = Toggles["Chakra Sense Spoof"]
-							if not chakraToggle or not chakraToggle.Value then
-								return
-							end
-
-							local player = getPlayerFromRow(obj)
-							if not player or player == localPlayer then
-								return
-							end
-
-							spectate(player, obj)
-						end)
-					end)
+						node = node.Parent
+					end
 				end
 
-			for _, v in ipairs(list:GetChildren()) do
-				task.spawn(onListChildAdded, v)
-			end
+				local function handleRowClick(row)
+					local chakraToggle = Toggles["Chakra Sense Spoof"]
+					if not chakraToggle or not chakraToggle.Value then
+						return
+					end
 
-			list.ChildAdded:Connect(onListChildAdded)
+					local player = getPlayerFromRow(row)
+					if not player or player == localPlayer then
+						return
+					end
+
+					local function trySpectate()
+						local playerData = getPlayerData(player)
+						if not playerData or not playerData.humanoid then
+							return false
+						end
+
+						spectate(player, row)
+						return true
+					end
+
+					if not trySpectate() then
+						task.spawn(function()
+							for _ = 1, 30 do
+								task.wait(0.1)
+								if trySpectate() then
+									break
+								end
+							end
+						end)
+					end
+				end
+
+				funcs.lbClickConn = UserInputService.InputBegan:Connect(function(input)
+					if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+						return
+					end
+
+					if input.UserInputState ~= Enum.UserInputState.Begin then
+						return
+					end
+
+					local guiObjects = playerGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
+					for _, obj in ipairs(guiObjects) do
+						local row = resolveRow(obj)
+						if row then
+							handleRowClick(row)
+							break
+						end
+					end
+				end)
 
 			connected = true
 		end)
@@ -1360,7 +1398,7 @@ do
 
 		autoPickupConn = RunService.Heartbeat:Connect(function()
 			local rootPart = localPlayerData.rootPart
-			if not rootPart or tick() - lastRanAt < 0.1 then
+			if not rootPart or tick() - lastRanAt < 0.35 then
 				return
 			end
 
@@ -1443,7 +1481,9 @@ do
 		end
 
 		if target then
-			myRootPart.CFrame = target.CFrame * CFrame.new(0, 0, 2)
+			if (myRootPart.Position - target.Position).Magnitude > 5 then
+				myRootPart.CFrame = target.CFrame * CFrame.new(0, 0, 2)
+			end
 		end
 	end
 end
@@ -1616,27 +1656,13 @@ do
 		speedConn = RunService.Stepped:Connect(function()
 			local humanoid = localPlayerData.humanoid
 			if humanoid then
-				humanoid.WalkSpeed = flag("Walk Speed Value")
+				humanoid.WalkSpeed = math.min(flag("Walk Speed Value") or 16, 105)
 			end
 		end)
 	end
 
 	local agilityConn
 	local agilityBase
-
-	local function getAgilityValue()
-		local live = workspace:FindFirstChild("Live")
-		if not live then
-			return
-		end
-
-		local liveChar = live:FindFirstChild(localPlayer.Name)
-		if not liveChar then
-			return
-		end
-
-		return liveChar:FindFirstChild("PassiveAgility")
-	end
 
 	function funcs.agilitySpoof(state)
 		if not state then
@@ -1645,9 +1671,9 @@ do
 				agilityConn = nil
 			end
 
-			local pa = getAgilityValue()
-			if pa and agilityBase then
-				pa.Value = agilityBase
+			local humanoid = localPlayerData.humanoid
+			if humanoid and agilityBase then
+				humanoid.WalkSpeed = agilityBase
 			end
 
 			agilityBase = nil
@@ -1658,18 +1684,49 @@ do
 			return
 		end
 
-		agilityConn = RunService.Heartbeat:Connect(function()
-			local pa = getAgilityValue()
-			if not pa then
+		agilityConn = RunService.Stepped:Connect(function()
+			local humanoid = localPlayerData.humanoid
+			if not humanoid then
 				return
 			end
 
 			if not agilityBase then
-				agilityBase = pa.Value
+				agilityBase = humanoid.WalkSpeed
 			end
 
 			local percent = flag("Agility Spoofer Percent") or 15
-			pa.Value = agilityBase * (1 + percent / 100)
+			humanoid.WalkSpeed = math.min(agilityBase * (1 + percent / 100), 105)
+		end)
+	end
+
+	local staminaConn
+
+	function funcs.infiniteStamina(state)
+		if not state then
+			if staminaConn then
+				staminaConn:Disconnect()
+				staminaConn = nil
+			end
+			return
+		end
+
+		if staminaConn then
+			return
+		end
+
+		staminaConn = RunService.Stepped:Connect(function()
+			local character = localPlayerData.character
+			if not character then
+				return
+			end
+
+			local settingsFolder = ReplicatedStorage:FindFirstChild("Settings")
+			local settings = settingsFolder and settingsFolder:FindFirstChild(localPlayer.Name)
+			local jumpCounters = settings and settings:FindFirstChild("JumpCounters")
+
+			if jumpCounters and jumpCounters.Value < 10 then
+				jumpCounters.Value = 10
+			end
 		end)
 	end
 
@@ -1752,8 +1809,116 @@ do
 			return ToastNotif({ text = "Select an item first." })
 		end
 
-		if dataFunction then
-			dataFunction:InvokeServer("Pay", 1, itemName, 1)
+		if not dataFunction then
+			return
+		end
+
+		local success, data = pcall(function()
+			return dataFunction:InvokeServer("GetData")
+		end)
+		if not success or type(data) ~= "table" then
+			return ToastNotif({ text = "Failed to fetch player data." })
+		end
+
+		local rack
+		local fallbackRack
+		for _, part in ipairs(workspace:GetDescendants()) do
+			if part:IsA("BasePart") then
+				local buyable = part:FindFirstChild("Buyable")
+				if buyable and buyable.Value == itemName then
+					if part:GetAttribute("Village") then
+						rack = part
+						break
+					elseif not fallbackRack then
+						fallbackRack = part
+					end
+				end
+			end
+		end
+		rack = rack or fallbackRack
+		if not rack then
+			return ToastNotif({ text = "No shop found for that item." })
+		end
+
+		local vd, month, week = dataFunction:InvokeServer("getVillageData")
+		local function getVillageData(v, m, w)
+			return vd["Month" .. (m or month)]["Week" .. (w or week)][v]
+		end
+
+		local function getEconomy(v)
+			if v == "Rogue" then
+				return "Struggling"
+			end
+			if v == "Neutral" then
+				return "Average"
+			end
+			if v then
+				return getVillageData(v).Politics.Economy
+			end
+			return "Average"
+		end
+
+		local function getRelationship(p1, p2)
+			if not (p1 and p2) then
+				return nil
+			end
+			if p1 == "Rogue" or p2 == "Rogue" then
+				return "War"
+			end
+			if p1 == "Neutral" or p2 == "Neutral" then
+				return "Neutral"
+			end
+			local v1, v2 = getVillageData(p1), getVillageData(p2)
+			if p1 == p2 then
+				return "Own"
+			end
+			if table.find(v1.Politics.Alliances, p2) or table.find(v2.Politics.Alliances, p1) then
+				return "Allied"
+			end
+			if table.find(v1.Politics.Enemies, p2) or table.find(v2.Politics.Enemies, p1) then
+				return "Enemies"
+			end
+			return "Neutral"
+		end
+
+		local village = rack:GetAttribute("Village")
+		local price = gameManager:getModifiedPrice(
+			gameManager:getPrice(itemName),
+			getRelationship(data.Village, village),
+			getEconomy(village),
+			"Buy"
+		)
+
+		local rootPart = localPlayerData.rootPart
+		if not rootPart then
+			return ToastNotif({ text = "Character not ready." })
+		end
+
+		local oldCFrame = rootPart.CFrame
+		rootPart.CFrame = rack.CFrame + Vector3.new(0, 6, 0)
+		task.wait(1.2)
+
+		local bought, result = pcall(function()
+			return dataFunction:InvokeServer("Pay", price, itemName, 1, rack)
+		end)
+
+		task.wait(0.3)
+		rootPart.CFrame = oldCFrame
+
+		if not bought then
+			return ToastNotif({ text = "Purchase failed." })
+		end
+
+		if result == true then
+			ToastNotif({ text = "Purchased " .. itemName .. " for " .. price .. " Ryo." })
+		else
+			local hint
+			if type(data.Ryo) == "number" and data.Ryo < price then
+				hint = " Not enough Ryo (" .. data.Ryo .. "/" .. price .. ")."
+			elseif gameManager.Items[itemName] and gameManager.Items[itemName].Condition then
+				hint = " Item may require a skill."
+			end
+			ToastNotif({ text = "Could not buy: " .. tostring(result) .. (hint or "") })
 		end
 	end
 end
@@ -1941,18 +2106,762 @@ do
 				task.cancel(wipeConfirmTimer)
 			end
 
-			local gender = flag("Reincarnation Gender") or "Male"
+	local gender = flag("Reincarnation Gender") or "Male"
 
-			if dataEvent then
-				dataEvent:FireServer("NewGame")
-			end
-			task.wait(0.5)
-			if dataFunction then
-				dataFunction:InvokeServer("RequestReincarnation", gender)
-			end
-
-			Library:Notify("Wiped and created " .. gender .. " slot!", 3)
+		if dataEvent then
+			dataEvent:FireServer("NewGame")
 		end
+		task.wait(0.5)
+		if dataFunction then
+			dataFunction:InvokeServer("RequestReincarnation", gender)
+		end
+
+		Library:Notify("Wiped and created " .. gender .. " slot!", 3)
+	end
+end
+end
+
+-- ── AUTO FARM ─────────────────────────────────────────
+do
+	local autoFarmConn
+	local autoFarmActive = false
+	local dodging = false
+	local safeSpotCFrame = nil
+	local lastBossPos = nil
+	local TP_THRESHOLD = 40
+
+	local function isBossAlive(bossName)
+		local model = workspace:FindFirstChild(bossName)
+		if not model then
+			return false
+		end
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		if not hum then
+			return false
+		end
+		return hum.Health > 0
+	end
+
+	local function findAliveBoss()
+		local selected = flag("Farm Bosses")
+		if type(selected) ~= "table" or next(selected) == nil then
+			return nil, nil
+		end
+		for name in pairs(selected) do
+			if isBossAlive(name) then
+				return name, workspace:FindFirstChild(name)
+			end
+		end
+		return nil, nil
+	end
+
+	local function equipWeapon()
+		local weapon = flag("Farm Weapon")
+		if not weapon or weapon == "" then
+			return
+		end
+		pcall(function()
+			dataEvent:FireServer("Item", "Selected", weapon)
+		end)
+	end
+
+	local function performM1()
+		pcall(function()
+			dataEvent:FireServer("CheckMeleeHit", nil, "NormalAttack", false)
+		end)
+	end
+
+	local function startBlock()
+		pcall(function()
+			dataFunction:InvokeServer("Block")
+		end)
+	end
+
+	local function endBlock()
+		pcall(function()
+			dataFunction:InvokeServer("EndBlock")
+		end)
+	end
+
+	local function moveToBoss(bossModel)
+		local bossRoot = bossModel.PrimaryPart or bossModel:FindFirstChild("HumanoidRootPart")
+		local myRoot = localPlayerData.rootPart
+		if not (bossRoot and myRoot) then
+			return
+		end
+		local dist = (bossRoot.Position - myRoot.Position).Magnitude
+		if dist > 80 then
+			myRoot.CFrame = bossRoot.CFrame * CFrame.new(0, 0, 8)
+		elseif dist > 12 then
+			local humanoid = localPlayerData.humanoid
+			if humanoid and humanoid.Health > 0 then
+				humanoid:MoveTo(bossRoot.Position)
+			end
+		end
+	end
+
+	local function pickUpDrops()
+		local myRoot = localPlayerData.rootPart
+		if not myRoot then
+			return
+		end
+		for _, obj in ipairs(workspace:GetChildren()) do
+			if obj:IsA("BasePart") then
+				local pickupable = obj:FindFirstChild("Pickupable")
+				local id = obj:FindFirstChild("ID")
+				if pickupable and id and (myRoot.Position - obj.Position).Magnitude < 40 then
+					pcall(function()
+						dataEvent:FireServer("PickUp", id.Value)
+					end)
+					task.wait(0.1)
+				end
+			end
+		end
+	end
+
+	local function getMySettings()
+		local settingsFolder = ReplicatedStorage:FindFirstChild("Settings")
+		if not settingsFolder then
+			return nil
+		end
+		return settingsFolder:FindFirstChild(localPlayer.Name)
+	end
+
+	local function settingsFlag(name)
+		local settings = getMySettings()
+		local value = settings and settings:FindFirstChild(name)
+		return value and value.Value or false
+	end
+
+	local function canAttack()
+		if settingsFlag("MeleeCooldown") then
+			return false
+		end
+		if settingsFlag("Blocking") then
+			return false
+		end
+		if settingsFlag("Stunned") then
+			return false
+		end
+		if settingsFlag("Knocked") then
+			return false
+		end
+		if settingsFlag("BeingGripped") then
+			return false
+		end
+		if settingsFlag("Invincible") then
+			return false
+		end
+		return true
+	end
+
+	local function getCombatCount()
+		return settingsFlag("CombatCount")
+	end
+
+	local function isAlive()
+		local hum = localPlayerData.humanoid
+		return hum ~= nil and hum.Health > 0
+	end
+
+	local function getServerList()
+		local servers = {}
+		local cursor = ""
+		repeat
+			local url = string.format(
+				"https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100&cursor=%s",
+				MAIN_PLACE_ID, cursor
+			)
+			local ok, response = pcall(function()
+				if syn and syn.request then
+					return syn.request({ Url = url })
+				elseif http_request then
+					return http_request({ Url = url })
+				elseif request then
+					return request({ Url = url })
+				end
+			end)
+			if ok and response and response.Success then
+				local data = HttpService:JSONDecode(response.Body)
+				for _, server in ipairs(data.data or {}) do
+					if server.id ~= game.JobId then
+						table.insert(servers, server.id)
+					end
+				end
+				cursor = data.nextPageCursor or ""
+			else
+				break
+			end
+		until cursor == ""
+		return servers
+	end
+
+	function funcs.autoFarmServerHop()
+		local servers = getServerList()
+		if #servers == 0 then
+			return ToastNotif({ text = "No servers found." })
+		end
+		local target = servers[math.random(1, #servers)]
+		ToastNotif({ text = "Hopping to new server..." })
+		pcall(function()
+			dataEvent:FireServer("ServerTeleport", target)
+		end)
+	end
+
+	function funcs.setSafeSpot()
+		local root = localPlayerData.rootPart
+		if root then
+			safeSpotCFrame = root.CFrame
+			ToastNotif({ text = "Safe spot saved!" })
+		end
+	end
+
+	function funcs.autoFarmBoss(state)
+		autoFarmActive = false
+		if autoFarmConn then
+			autoFarmConn:Disconnect()
+			autoFarmConn = nil
+		end
+		lastBossPos = nil
+		dodging = false
+
+		if not state then
+			return
+		end
+
+		local weapon = flag("Farm Weapon")
+		if not weapon or weapon == "" then
+			ToastNotif({ text = "Set a weapon name first!" })
+			Toggles["Auto Farm"]:SetValue(false)
+			return
+		end
+
+		autoFarmActive = true
+
+		task.spawn(function()
+			while autoFarmActive do
+				if findAliveBoss() and not dodging and isAlive() then
+					local combatCount = getCombatCount()
+					if combatCount >= 5 then
+						task.wait(1.2)
+					elseif canAttack() then
+						performM1()
+						task.wait(0.42)
+					else
+						task.wait(0.15)
+					end
+				else
+					task.wait(0.3)
+				end
+			end
+		end)
+
+		task.spawn(function()
+			while autoFarmActive do
+				if findAliveBoss() and flag("Auto Block") and not dodging and isAlive() and canAttack() then
+					if getCombatCount() == 0 and not settingsFlag("Blocking") then
+						startBlock()
+						task.wait(0.35)
+						endBlock()
+						task.wait(0.55)
+					else
+						task.wait(0.2)
+					end
+				else
+					task.wait(0.3)
+				end
+			end
+		end)
+
+		local lastEquipTime = 0
+		local lastMoveTime = 0
+		local lastPickupTime = 0
+		local lastHopTime = 0
+		local dodgeEndTime = 0
+
+		autoFarmConn = RunService.Heartbeat:Connect(function()
+			local myRoot = localPlayerData.rootPart
+			if not myRoot then
+				return
+			end
+
+			local now = tick()
+
+			if dodging and now > dodgeEndTime then
+				dodging = false
+				if safeSpotCFrame then
+					myRoot.CFrame = safeSpotCFrame
+				end
+			end
+
+			if dodging then
+				return
+			end
+
+			local bossName, bossModel = findAliveBoss()
+
+			if bossName and bossModel then
+				local bossRoot = bossModel.PrimaryPart or bossModel:FindFirstChild("HumanoidRootPart")
+
+				if bossRoot and lastBossPos then
+					local dist = (bossRoot.Position - lastBossPos).Magnitude
+					if dist > TP_THRESHOLD and flag("Auto Block") then
+						dodging = true
+						dodgeEndTime = now + 1.5
+						if safeSpotCFrame then
+							myRoot.CFrame = safeSpotCFrame
+						end
+						lastBossPos = bossRoot.Position
+						return
+					end
+				end
+
+				if bossRoot then
+					lastBossPos = bossRoot.Position
+				end
+
+				if now - lastEquipTime > 5 then
+					lastEquipTime = now
+					equipWeapon()
+				end
+
+				if now - lastMoveTime > 1 then
+					lastMoveTime = now
+					moveToBoss(bossModel)
+				end
+			else
+				lastBossPos = nil
+
+				if now - lastPickupTime > 2 then
+					lastPickupTime = now
+					task.spawn(pickUpDrops)
+				end
+
+				if flag("Farm Server Hop") and now - lastHopTime > 10 then
+					lastHopTime = now
+					ToastNotif({ text = "No selected boss alive. Hopping..." })
+					funcs.autoFarmServerHop()
+					return
+				end
+
+				if safeSpotCFrame and (safeSpotCFrame.Position - myRoot.Position).Magnitude > 10 then
+					myRoot.CFrame = safeSpotCFrame
+				end
+			end
+		end)
+	end
+end
+
+-- ── AUTO BLOCK (COMBAT) ───────────────────────────────
+do
+	local AUTO_BLOCK_SKILLS = {
+		{ Name = "Cleave Rush", Dist = 35, Delay = 0, Dur = 0, Detect = nil, Type = "SKILL" },
+		{ Name = "Matatabi Cross Slash", Dist = 10, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Smoldering Earth", Dist = 9, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Shisui Thrust", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Dynamic Entry", Dist = 35, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Spinning Dash", Dist = 100, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Thrusting Strike", Dist = 25, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Ice Spikes", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Blood Dragon", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Double Blood Dragon", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Triple Blood Dragon", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Amaterasu", Dist = 40, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "M1 Combo Ender", Dist = 15, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Sasuke M2", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Shisui Throw", Dist = 25, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Hirudora", Dist = 50, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Protruding Chains", Dist = 30, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Lariat", Dist = 25, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Butterfly Slam", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Fern Dance", Dist = 40, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Matatabi Bullets", Dist = 30, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Matatabi Cloak Bomb", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Shukaku Cloak Bomb", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Jinchuriki Bomb", Dist = 40, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Zig Zag", Dist = 25, Delay = 0, Dur = 0.25, Detect = nil, Type = "SKILL" },
+		{ Name = "Almighty Push", Dist = 30, Delay = 0, Dur = 0.25, Detect = "10930376912", Type = "ANIM" },
+		{ Name = "Earth Slam", Dist = 40, Delay = 0.2, Dur = 0.25, Detect = "11289531561", Type = "ANIM" },
+		{ Name = "Coral Emerge", Dist = 60, Delay = 0.1, Dur = 0.25, Detect = "99068559501337", Type = "ANIM" },
+		{ Name = "Matatabi Tail Swipe", Dist = 40, Delay = 0.1, Dur = 0.25, Detect = "120703747916516", Type = "ANIM" },
+		{ Name = "Matatabi Right Punch", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = "86414508786370", Type = "ANIM" },
+		{ Name = "Matatabi Left Punch", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = "93012373755384", Type = "ANIM" },
+		{ Name = "Matatabi Bite", Dist = 15, Delay = 0.1, Dur = 0.25, Detect = "113419524303689", Type = "ANIM" },
+		{ Name = "Matatabi Cloak Cross Slash", Dist = 15, Delay = 0.1, Dur = 0.25, Detect = "129517118182170", Type = "ANIM" },
+		{ Name = "Isobu Right Punch", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = "91987903183435", Type = "ANIM" },
+		{ Name = "Isobu Left Punch", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = "121901061458966", Type = "ANIM" },
+		{ Name = "Isobu Bite", Dist = 15, Delay = 0.1, Dur = 0.25, Detect = "91143601400588", Type = "ANIM" },
+		{ Name = "Isobu Tail Hits", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = "138957995371428", Type = "ANIM" },
+		{ Name = "Isobu Pillars", Dist = 35, Delay = 0.2, Dur = 0.25, Detect = "73118048569214", Type = "ANIM" },
+		{ Name = "Isobu Bash", Dist = 30, Delay = 0.1, Dur = 0.25, Detect = "133761269679135", Type = "ANIM" },
+		{ Name = "Shukaku Left Punch", Dist = 25, Delay = 0.1, Dur = 0.25, Detect = "104805162139882", Type = "ANIM" },
+		{ Name = "Shukaku Right Punch", Dist = 25, Delay = 0.1, Dur = 0.25, Detect = "113076726023193", Type = "ANIM" },
+		{ Name = "Shukaku Tail Swipe", Dist = 45, Delay = 0.1, Dur = 0.25, Detect = "129209861939680", Type = "ANIM" },
+		{ Name = "Shukaku Arm Slam", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = "130533946075420", Type = "ANIM" },
+		{ Name = "Golem Right Punch", Dist = 25, Delay = 0.1, Dur = 0.25, Detect = "105997354575927", Type = "ANIM" },
+		{ Name = "Golem Left Punch", Dist = 25, Delay = 0.1, Dur = 0.25, Detect = "111592213267733", Type = "ANIM" },
+		{ Name = "Golem Right Stomp", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = "74690728860338", Type = "ANIM" },
+		{ Name = "Golem Left Stomp", Dist = 20, Delay = 0.1, Dur = 0.25, Detect = "78308752976063", Type = "ANIM" },
+		{ Name = "Golem Roots", Dist = 30, Delay = 0.1, Dur = 0.25, Detect = "99459589869966", Type = "ANIM" },
+		{ Name = "Golem Spire", Dist = 30, Delay = 0.1, Dur = 0.25, Detect = "116907126244057", Type = "ANIM" },
+		{ Name = "Golem Dragon", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = "120758909308511", Type = "ANIM" },
+		{ Name = "Blood Arrow", Dist = 45, Delay = 0, Dur = 0.25, Detect = "83093666885184", Type = "ANIM" },
+		{ Name = "Shukaku Arm Emerge", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = "124819180967216", Type = "ANIM" },
+		{ Name = "Barbarian Right Slam", Dist = 22, Delay = 0.05, Dur = 0.25, Detect = "6038040720", Type = "ANIM" },
+		{ Name = "Barbarian Left Slam", Dist = 22, Delay = 0.05, Dur = 0.25, Detect = "6038041916", Type = "ANIM" },
+		{ Name = "Matatabi Cloak Bomb", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = "93839342012083", Type = "ANIM" },
+		{ Name = "Matatabi Cloak Zig Zag Pounce", Dist = 25, Delay = 0.1, Dur = 0.25, Detect = "91336287964954", Type = "ANIM" },
+		{ Name = "Matatabi Cloak Bullets", Dist = 30, Delay = 0, Dur = 0.25, Detect = "106217504753783", Type = "ANIM" },
+		{ Name = "Water Dragon", Dist = 25, Delay = 0, Dur = 0.25, Detect = nil, Type = "OBJECT", ObjectName = "WaterDragonHead", ObjectLocation = "Debris" },
+		{ Name = "Wooden Dragon", Dist = 40, Delay = 0, Dur = 0.25, Detect = nil, Type = "OBJECT", ObjectName = "WoodenDragonHead", ObjectLocation = "Debris" },
+		{ Name = "Earth Dragon", Dist = 45, Delay = 0, Dur = 0.25, Detect = nil, Type = "OBJECT", ObjectName = "Earth Dragon", ObjectLocation = "Workspace" },
+		{ Name = "Fireball", Dist = 20, Delay = 0, Dur = 0.25, Detect = nil, Type = "OBJECT", ObjectName = "Fireball", ObjectLocation = "Workspace" },
+		{ Name = "Ice Dragon", Dist = 15, Delay = 0.2, Dur = 0.25, Detect = nil, Type = "OBJECT", ObjectName = "crack", ObjectLocation = "Debris" },
+		{ Name = "Wooden Spire", Dist = 15, Delay = 0.05, Dur = 0.25, Detect = nil, Type = "OBJECT", ObjectName = "crack", ObjectLocation = "Debris" },
+		{ Name = "Ice Spikes (Obj)", Dist = 35, Delay = 0.1, Dur = 0.25, Detect = nil, Type = "OBJECT", ObjectName = "IceSpike", ObjectLocation = "Debris" },
+	}
+
+	local skillByName = {}
+	local defaultSkills = {}
+	for _, skill in ipairs(AUTO_BLOCK_SKILLS) do
+		skillByName[skill.Name] = skill
+		defaultSkills[skill.Name] = {
+			Dist = skill.Dist,
+			Delay = skill.Delay,
+			Dur = skill.Dur,
+			Detect = skill.Detect,
+		}
+	end
+
+	local animSkills = {}
+	local objSkills = {}
+	local animSkillByNum = {}
+	local objSkillByKey = {}
+	local maxAnimDist = 0
+	for _, skill in ipairs(AUTO_BLOCK_SKILLS) do
+		if skill.Type == "ANIM" then
+			table.insert(animSkills, skill)
+			if skill.Dist > maxAnimDist then
+				maxAnimDist = skill.Dist
+			end
+			local num = tonumber(skill.Detect)
+			if num then
+				animSkillByNum[num] = skill
+			end
+		elseif skill.Type == "OBJECT" then
+			table.insert(objSkills, skill)
+			objSkillByKey[(skill.ObjectLocation or "Workspace") .. "/" .. skill.ObjectName] = skill
+		end
+	end
+
+	local autoBlockConn
+	local blocking = false
+	local lastBlockTime = {}
+	local DETECT_INTERVAL = 0.1
+	local detectTimer = 0
+
+	local function startBlock()
+		pcall(function()
+			dataFunction:InvokeServer("Block")
+		end)
+	end
+
+	local function endBlock()
+		pcall(function()
+			dataFunction:InvokeServer("EndBlock")
+		end)
+	end
+
+	local function doBlock(skill)
+		if blocking then
+			return
+		end
+
+		local now = tick()
+		if lastBlockTime[skill] and now - lastBlockTime[skill] < 0.5 then
+			return
+		end
+		lastBlockTime[skill] = now
+
+		blocking = true
+		task.spawn(function()
+			if skill.Delay > 0 then
+				task.wait(skill.Delay)
+			end
+
+			if flag("Auto Block") and dataFunction then
+				startBlock()
+			end
+
+			task.wait(skill.Dur)
+
+			if dataFunction then
+				endBlock()
+			end
+
+			blocking = false
+		end)
+	end
+
+	local function getAnimIdNumber(id)
+		if not id then
+			return nil
+		end
+		local num = tostring(id):match("(%d+)")
+		return num and tonumber(num) or nil
+	end
+
+	local function getRangeCap()
+		return flag("Block Range") or 50
+	end
+
+	local function onSkillCooldown(skill, player)
+		if not flag("Auto Block") or blocking then
+			return
+		end
+
+		local character = player and player.Character
+		local root = character and (character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart)
+		local myRoot = localPlayerData.rootPart
+		if root and myRoot and (myRoot.Position - root.Position).Magnitude <= math.min(skill.Dist, getRangeCap()) then
+			doBlock(skill)
+		end
+	end
+
+	local skillCooldownWatchReady = false
+	local function setupSkillCooldownWatch()
+		if skillCooldownWatchReady then
+			return
+		end
+		skillCooldownWatchReady = true
+
+		local cooldowns = ReplicatedStorage:FindFirstChild("Cooldowns")
+		if not cooldowns then
+			return
+		end
+
+		local function bindCooldown(value, player)
+			if value:IsA("NumberValue") and skillByName[value.Name] then
+				value.Changed:Connect(function()
+					onSkillCooldown(skillByName[value.Name], player)
+				end)
+			end
+		end
+
+		local function watchFolder(folder, player)
+			for _, v in ipairs(folder:GetChildren()) do
+				bindCooldown(v, player)
+			end
+			folder.ChildAdded:Connect(function(v)
+				bindCooldown(v, player)
+			end)
+		end
+
+		for _, p in ipairs(Players:GetPlayers()) do
+			local folder = cooldowns:FindFirstChild(p.Name)
+			if folder then
+				watchFolder(folder, p)
+			end
+		end
+
+		cooldowns.ChildAdded:Connect(function(folder)
+			local p = Players:FindFirstChild(folder.Name)
+			if p then
+				watchFolder(folder, p)
+			end
+		end)
+	end
+
+	local enemyCache = {}
+	local enemyCacheTimer = 0
+
+	local function refreshEnemies()
+		enemyCache = {}
+
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= localPlayer then
+				local char = p.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+				if hum and hum.Health > 0 and root then
+					table.insert(enemyCache, { model = char, humanoid = hum, rootPart = root })
+				end
+			end
+		end
+
+		for _, model in ipairs(workspace:GetChildren()) do
+			if model:IsA("Model") and model ~= localPlayer.Character then
+				local hum = model:FindFirstChildOfClass("Humanoid")
+				local root = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+				if hum and hum.Health > 0 and root then
+					table.insert(enemyCache, { model = model, humanoid = hum, rootPart = root })
+				end
+			end
+		end
+	end
+
+	local function detectAnimations()
+		local rootPart = localPlayerData.rootPart
+		if not rootPart then
+			return
+		end
+
+		local now = tick()
+		local rangeCap = getRangeCap()
+		local maxDist = math.min(maxAnimDist, rangeCap)
+
+		for _, e in ipairs(enemyCache) do
+			if (rootPart.Position - e.rootPart.Position).Magnitude > maxDist then
+				continue
+			end
+
+			local animator = e.humanoid:FindFirstChildOfClass("Animator")
+			if not animator then
+				continue
+			end
+
+			for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+				local anim = track.Animation
+				if not anim then
+					continue
+				end
+
+				local num = getAnimIdNumber(anim.AnimationId)
+				local skill = num and animSkillByNum[num]
+				if not skill then
+					continue
+				end
+
+				if lastBlockTime[skill] and now - lastBlockTime[skill] < 0.5 then
+					continue
+				end
+
+				if (rootPart.Position - e.rootPart.Position).Magnitude > math.min(skill.Dist, rangeCap) then
+					continue
+				end
+
+				doBlock(skill)
+				if blocking then
+					return
+				end
+			end
+		end
+	end
+
+	local function detectObjects()
+		local rootPart = localPlayerData.rootPart
+		if not rootPart then
+			return
+		end
+
+		local now = tick()
+		local rangeCap = getRangeCap()
+
+		local function checkContainer(container, location)
+			if not container then
+				return
+			end
+
+			for _, obj in ipairs(container:GetChildren()) do
+				local skill = objSkillByKey[location .. "/" .. obj.Name]
+				if not skill then
+					continue
+				end
+
+				if lastBlockTime[skill] and now - lastBlockTime[skill] < 0.5 then
+					continue
+				end
+
+				local pos = obj:IsA("BasePart") and obj.Position
+					or (obj.PrimaryPart and obj.PrimaryPart.Position)
+					or (obj:FindFirstChild("HumanoidRootPart") and obj.HumanoidRootPart.Position)
+				if pos and (rootPart.Position - pos).Magnitude <= math.min(skill.Dist, rangeCap) then
+					doBlock(skill)
+					if blocking then
+						return
+					end
+				end
+			end
+		end
+
+		checkContainer(workspace:FindFirstChild("Debris"), "Debris")
+		checkContainer(workspace, "Workspace")
+	end
+
+	setupSkillCooldownWatch()
+
+	function funcs.autoBlock(state)
+		if not state then
+			if autoBlockConn then
+				autoBlockConn:Disconnect()
+				autoBlockConn = nil
+			end
+			blocking = false
+			enemyCache = {}
+			return
+		end
+
+		if autoBlockConn then
+			return
+		end
+
+		ToastNotif({ text = "Auto Block enabled!" })
+
+		autoBlockConn = RunService.Heartbeat:Connect(function()
+			if not flag("Auto Block") then
+				return
+			end
+
+			local now = tick()
+			if now - enemyCacheTimer > 0.5 then
+				enemyCacheTimer = now
+				refreshEnemies()
+			end
+
+			if blocking then
+				return
+			end
+
+			if now - detectTimer < DETECT_INTERVAL then
+				return
+			end
+			detectTimer = now
+
+			detectAnimations()
+			detectObjects()
+		end)
+	end
+
+	funcs.getAutoBlockSkillNames = function()
+		local names = {}
+		for _, skill in ipairs(AUTO_BLOCK_SKILLS) do
+			table.insert(names, skill.Name)
+		end
+		return names
+	end
+
+	funcs.getAutoBlockSkill = function(name)
+		return skillByName[name]
+	end
+
+	funcs.updateAutoBlockSkill = function(name, field, value)
+		local skill = skillByName[name]
+		if skill then
+			skill[field] = value
+		end
+	end
+
+	funcs.resetAutoBlockSkill = function(name)
+		local skill = skillByName[name]
+		local defaults = defaultSkills[name]
+		if skill and defaults then
+			skill.Dist = defaults.Dist
+			skill.Delay = defaults.Delay
+			skill.Dur = defaults.Dur
+			skill.Detect = defaults.Detect
+			return true
+		end
+		return false
 	end
 end
 
@@ -1964,8 +2873,10 @@ local Window = Library:CreateWindow({
 })
 
 local Main = Window:AddTab("Main")
-local ESPTab = Window:AddTab("ESP")
+local AutoFarmTab = Window:AddTab("Auto Farm")
+local CombatTab = Window:AddTab("Combat")
 local QoL = Window:AddTab("Quality Of Life")
+local ESPTab = Window:AddTab("ESP")
 local Visuals = Window:AddTab("Visuals")
 local InfoTab = Window:AddTab("Information")
 local UISettings = Window:AddTab("UI Settings")
@@ -1979,7 +2890,7 @@ local walkSpeedDepbox = movement:AddDependencyBox()
 walkSpeedDepbox:AddSlider("Walk Speed Value", {
 	Text = "Walk Speed Value",
 	Min = 0,
-	Max = 500,
+	Max = 109,
 	Default = 50,
 	Rounding = 0,
 })
@@ -2008,6 +2919,8 @@ agilityDepbox:AddSlider("Agility Spoofer Percent", {
 })
 agilityDepbox:SetupDependencies({ { Toggles["Agility Spoofer"], true } })
 
+movement:AddToggle("Infinite Stamina", { Text = "Infinite Stamina", Callback = funcs.infiniteStamina })
+
 local noClipToggle = movement:AddToggle("No Clip", { Text = "No Clip", Callback = funcs.noClip })
 noClipToggle:AddKeyPicker("NoClip Key", {
 	Text = "NoClip Keybind",
@@ -2018,7 +2931,6 @@ noClipToggle:AddKeyPicker("NoClip Key", {
 
 movement:AddToggle("No Fall Damage", { Text = "No Fall Damage" })
 movement:AddToggle("No Kill Bricks", { Text = "No Kill Bricks", Callback = funcs.noKillBricks })
-movement:AddToggle("Auto Pickup", { Text = "Auto Pickup", Callback = funcs.autoPickup })
 
 localCheats:AddToggle("Moderator Sound Alert", { Text = "Moderator Sound Alert" })
 localCheats:AddToggle("Chakra Sense Notifier", { Text = "Chakra Sense Notifier", Default = true })
@@ -2048,6 +2960,160 @@ local chakraSense = Main:AddRightGroupbox("Chakra Sense")
 
 chakraSense:AddToggle("Chakra Sense Spoof", { Text = "Chakra Sense", Callback = funcs.chakraSpoof })
 chakraSense:AddToggle("Sense Detector", { Text = "Sense Detector", Callback = funcs.chakraSenseDetect })
+
+-- ── AUTO FARM ─────────────────────────────────────────
+local farmSetup = AutoFarmTab:AddLeftGroupbox("Farm Setup")
+local farmToggles = AutoFarmTab:AddLeftGroupbox("Farm Toggles")
+local farmActions = AutoFarmTab:AddRightGroupbox("Actions")
+
+farmSetup:AddDropdown("Farm Bosses", {
+	Text = "Farm Bosses",
+	Values = {
+		"Hyuga Boss",
+		"Haku Boss",
+		"Tairock",
+		"Chakra Knight",
+		"The Ringed Samurai",
+		"Lavarossa",
+		"Barbarit The Rose",
+		"Lava Snake",
+		"Enchanted Tairock",
+		"Frosted The Rose",
+		"Hallowed Chakra Knight",
+	},
+	Multi = true,
+	Default = {},
+})
+
+farmSetup:AddInput("Farm Weapon", {
+	Text = "Weapon Name",
+	Default = "",
+	Finished = true,
+	Callback = function(value)
+		if value and value ~= "" then
+			ToastNotif({ text = "Weapon set: " .. value })
+		end
+	end,
+})
+
+farmToggles:AddToggle("Auto Farm", { Text = "Auto Farm", Callback = funcs.autoFarmBoss })
+farmToggles:AddToggle("Auto Pickup", { Text = "Auto Pickup", Callback = funcs.autoPickup })
+farmToggles:AddToggle("Farm Server Hop", { Text = "Server Hop on Empty", Default = true })
+
+farmActions:AddButton({ Text = "Set Safe Spot", Func = funcs.setSafeSpot })
+farmActions:AddButton({ Text = "Manual Server Hop", Func = funcs.autoFarmServerHop })
+
+-- ── COMBAT ────────────────────────────────────────────
+local combatGroup = CombatTab:AddLeftGroupbox("Auto Block")
+local blockSettingsGroup = CombatTab:AddLeftGroupbox("Block Settings")
+local skillEditorGroup = CombatTab:AddRightGroupbox("Skill Editor")
+
+combatGroup:AddToggle("Auto Block", { Text = "Auto Block", Callback = funcs.autoBlock })
+blockSettingsGroup:AddSlider("Block Range", {
+	Text = "Block Range",
+	Min = 1,
+	Max = 150,
+	Default = 50,
+	Rounding = 0,
+})
+
+local selectedEditSkill = nil
+
+local editSkillInfo = skillEditorGroup:AddLabel("Select a skill to edit", true)
+
+local editSkillDropdown = skillEditorGroup:AddDropdown(nil, {
+	Text = "Edit Skill",
+	Values = funcs.getAutoBlockSkillNames() or {},
+	AllowNull = true,
+	Callback = function(value)
+		selectedEditSkill = value
+
+		if not value then
+			editSkillInfo:SetText("Select a skill to edit")
+			return
+		end
+
+		local skill = funcs.getAutoBlockSkill(value)
+		if not skill then
+			editSkillInfo:SetText(value)
+			return
+		end
+
+		local info = "Type: " .. skill.Type
+		if skill.Type == "OBJECT" then
+			info = info .. " | " .. tostring(skill.ObjectName) .. " (" .. tostring(skill.ObjectLocation) .. ")"
+		elseif skill.Type == "ANIM" then
+			info = info .. " | ID: " .. tostring(skill.Detect)
+		end
+
+		editSkillInfo:SetText(value .. "  [" .. info .. "]")
+
+		editDistSlider:SetValue(skill.Dist or 50)
+		editDelaySlider:SetValue(skill.Delay or 0)
+		editDurSlider:SetValue(skill.Dur or 0.25)
+	end,
+})
+
+local editDistSlider = skillEditorGroup:AddSlider(nil, {
+	Text = "Dist",
+	Min = 1,
+	Max = 150,
+	Default = 50,
+	Rounding = 0,
+})
+
+local editDelaySlider = skillEditorGroup:AddSlider(nil, {
+	Text = "Delay",
+	Min = 0,
+	Max = 5,
+	Default = 0,
+	Rounding = 2,
+})
+
+local editDurSlider = skillEditorGroup:AddSlider(nil, {
+	Text = "Dur",
+	Min = 0,
+	Max = 5,
+	Default = 0.25,
+	Rounding = 2,
+})
+
+skillEditorGroup:AddButton({
+	Text = "Apply Changes",
+	Func = function()
+		if not selectedEditSkill then
+			ToastNotif({ text = "Select a skill first" })
+			return
+		end
+
+		funcs.updateAutoBlockSkill(selectedEditSkill, "Dist", editDistSlider.Value)
+		funcs.updateAutoBlockSkill(selectedEditSkill, "Delay", editDelaySlider.Value)
+		funcs.updateAutoBlockSkill(selectedEditSkill, "Dur", editDurSlider.Value)
+
+		ToastNotif({ text = "Updated " .. selectedEditSkill })
+	end,
+})
+
+skillEditorGroup:AddButton({
+	Text = "Reset to Default",
+	Func = function()
+		if not selectedEditSkill then
+			ToastNotif({ text = "Select a skill first" })
+			return
+		end
+
+		funcs.resetAutoBlockSkill(selectedEditSkill)
+
+		local skill = funcs.getAutoBlockSkill(selectedEditSkill)
+		if skill then
+			editDistSlider:SetValue(skill.Dist or 50)
+			editDelaySlider:SetValue(skill.Delay or 0)
+			editDurSlider:SetValue(skill.Dur or 0.25)
+		end
+
+		ToastNotif({ text = "Reset " .. selectedEditSkill })
+	end,
+})
 
 -- ── ESP ───────────────────────────────────────────────
 local playersSection = ESPTab:AddLeftGroupbox("Players")
@@ -2102,6 +3168,7 @@ npcDropdown = teleportQoL:AddDropdown("NPC Teleport", {
 	AllowNull = true,
 })
 teleportQoL:AddButton({ Text = "Teleport To", Func = funcs.teleportToNPC })
+teleportQoL:AddButton({ Text = "Refresh NPC List", Func = funcs.refreshNPCList })
 
 teleportQoL:AddDropdown("Player Teleport", {
 	Text = "Players",
@@ -2282,6 +3349,14 @@ Library:OnUnload(function()
 	funcs.chakraSpoof(false)
 	funcs.chakraSenseDetect(false)
 	funcs.agilitySpoof(false)
+	funcs.infiniteStamina(false)
+	funcs.autoFarmBoss(false)
+	funcs.autoBlock(false)
+
+	if funcs.lbClickConn then
+		funcs.lbClickConn:Disconnect()
+		funcs.lbClickConn = nil
+	end
 
 	if attachConn then
 		attachConn:Disconnect()
